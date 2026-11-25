@@ -16,7 +16,7 @@ Groq Settings accepts an API key and model ID. Keys are stored in the device Key
 
 The native UI uses system typography, adaptive layouts, 44-point controls, selectable message text, concise status feedback, and native sheets. Design guidance was read from Emil Kowalski's `emil-design-eng` and `apple-design` skills at https://github.com/emilkowalski/skills, commit `64eb3deb9a5fbfa041faf783e0bc3fd635872e9c`. The flower intro still supports Reduce Motion.
 
-The build includes a simulator-only regression check for Keychain, mocked Groq tool calls, file picker presentation, native import and script execution with a filename containing an apostrophe and spaces. The test checks actual shell output and exit status. Groq API access with a real account and physical-device file providers require device verification.
+The build includes a simulator-only regression check for mocked Groq tool calls, file picker presentation, native import, separate chats, image payloads and script execution with a filename containing an apostrophe and spaces. The test checks actual shell output and exit status. The unsigned simulator mocks credential access only when launched with the explicit smoke-test flag. Device builds always use Keychain. Keychain provisioning and physical-device file/photo providers require device verification. Groq text tools and vision access were also checked separately against the live API.
 
 ## Python and tools
 

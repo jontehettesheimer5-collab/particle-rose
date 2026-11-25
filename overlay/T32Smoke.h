@@ -62,11 +62,6 @@ static BOOL T32HasResponder(UIView *view) {
 static void T32StartSmoke(T32ChatController *chat) {
     if (![NSProcessInfo.processInfo.arguments containsObject:@"--t32-smoke"]) return;
     [chat loadViewIfNeeded];
-    OSStatus status = T32SaveKey(@"simulator-test-key");
-    if (status != errSecSuccess || ![T32ReadKey() isEqual:@"simulator-test-key"]) {
-        T32SmokeWrite(@{@"passed": @NO, @"error": @"Keychain round trip failed", @"status": @(status)});
-        return;
-    }
     NSURLSessionConfiguration *configuration = NSURLSessionConfiguration.ephemeralSessionConfiguration;
     configuration.protocolClasses = @[T32MockGroqProtocol.class];
     chat.client.session = [NSURLSession sessionWithConfiguration:configuration];
@@ -130,7 +125,8 @@ static void T32StartSmoke(T32ChatController *chat) {
             for (NSDictionary *row in chat.rows) if ([row[@"images"] count]) imageStored = YES;
             [timer invalidate];
             T32SmokeWrite(@{@"passed":@(earlierChecks && imagePassed && imageStored), @"phase":@(phase), @"messages":chat.rows,
-                @"checks":@[@"Keychain", @"Keyboard unfocused at startup", @"Groq tools (mocked)", @"Native file picker", @"File import and quoted script execution", @"Output and exit code", @"Separate chat histories", @"Image import, message and vision payload (mocked)"]});
+                @"checks":@[@"Keyboard unfocused at startup", @"Groq tools (mocked)", @"Native file picker", @"File import and quoted script execution", @"Output and exit code", @"Separate chat histories", @"Image import, message and vision payload (mocked)"],
+                @"deviceChecksRemaining":@[@"Keychain with KSign provisioning", @"Physical Photos and iCloud providers"]});
         }
     }];
 }

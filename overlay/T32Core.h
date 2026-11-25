@@ -53,6 +53,11 @@ static NSMutableDictionary *T32KeyQuery(void) {
 }
 
 static NSString *T32ReadKey(void) {
+#if TARGET_OS_SIMULATOR
+    // Unsigned CI simulator apps cannot access Keychain. Mock this boundary only
+    // for the explicit smoke-test launch; device builds always use Keychain.
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"--t32-smoke"]) return @"simulator-test-key";
+#endif
     NSMutableDictionary *query = T32KeyQuery();
     query[(__bridge id)kSecReturnData] = @YES;
     query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
