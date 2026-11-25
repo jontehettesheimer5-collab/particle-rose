@@ -1,8 +1,12 @@
 // Terminal32 additions by 32e4, GPL-3.0-or-later.
 #pragma once
 #import "T32Core.h"
+#import <PhotosUI/PhotosUI.h>
 
 @class T32ChatController;
+@interface T32ThreadsController : UITableViewController
+@property (nonatomic, weak) T32ChatController *chat;
+@end
 
 @interface T32FilesController : UITableViewController
 @property (nonatomic, weak) T32ChatController *chat;
@@ -14,7 +18,11 @@
 @property (nonatomic, strong) UIScrollView *scroll;
 @end
 
-@interface T32ChatController : UIViewController <UITableViewDataSource, UITableViewDelegate, UITextViewDelegate, UIDocumentPickerDelegate>
+@interface T32ChatController : UIViewController <UITableViewDataSource, UITableViewDelegate, UITextViewDelegate, UIDocumentPickerDelegate, PHPickerViewControllerDelegate>
+@property (nonatomic, strong) NSMutableArray *threads;
+@property (nonatomic, strong) NSMutableDictionary *activeThread;
+@property (nonatomic, strong) NSMutableArray *pendingImages;
+@property (nonatomic, strong) UIButton *runButton;
 @property (nonatomic, weak) TerminalViewController *terminalController;
 @property (nonatomic, strong) T32FileStore *store;
 @property (nonatomic, strong) T32GroqClient *client;
@@ -45,7 +53,30 @@
 @property (nonatomic) NSUInteger outputRow;
 - (void)openPicker;
 - (void)selectFile:(NSDictionary *)file;
+- (void)newChat;
+- (void)activateThread:(NSMutableDictionary *)thread;
 - (void)runSelectedWithArguments:(NSArray *)arguments completion:(void (^)(NSString *))completion;
+@end
+
+@implementation T32ThreadsController
+- (void)viewDidLoad {
+    [super viewDidLoad]; self.title = @"Chats";
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(add)];
+    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(close)];
+}
+- (void)close { [self dismissViewControllerAnimated:YES completion:nil]; }
+- (void)add { [self.chat newChat]; [self close]; }
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return self.chat.threads.count; }
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+    NSDictionary *thread = self.chat.threads[indexPath.row];
+    cell.textLabel.text = thread[@"title"] ?: @"New chat"; cell.textLabel.numberOfLines = 2;
+    cell.accessoryType = thread == self.chat.activeThread ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+    return cell;
+}
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [self.chat activateThread:self.chat.threads[indexPath.row]]; [self close];
+}
 @end
 
 static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, SEL action) {
@@ -125,7 +156,7 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
     explanation.numberOfLines = 0;
     explanation.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
     explanation.textColor = UIColor.secondaryLabelColor;
-    explanation.text = @"Your key is stored in this device’s Keychain. Groq receives your chat messages and file text you ask the assistant to read. Imported files and script execution stay on this device. API usage follows your Groq account limits.";
+    explanation.text = @"Your key is stored in this device’s Keychain. Groq receives your messages, attached images, requested file previews and script output. Scripts run locally. Image messages automatically use a vision model. API usage follows your Groq account limits.";
     explanation.adjustsFontForContentSizeCategory = YES;
     [stack addArrangedSubview:explanation];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(keyboard:) name:UIKeyboardWillChangeFrameNotification object:nil];
@@ -196,18 +227,25 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
     self.client = [T32GroqClient new];
     self.rows = [NSMutableArray array];
     self.history = [NSMutableArray array];
-    NSData *saved = [NSData dataWithContentsOfURL:[T32StateURL() URLByAppendingPathComponent:@"chat.json"]];
-    NSArray *rows = saved ? [NSJSONSerialization JSONObjectWithData:saved options:0 error:nil] : nil;
-    for (id row in rows) {
-        if ([row isKindOfClass:NSDictionary.class] && [row[@"text"] isKindOfClass:NSString.class] && [row[@"role"] isKindOfClass:NSString.class]) {
-            [self.rows addObject:row];
-            if ([row[@"role"] isEqual:@"user"] || [row[@"role"] isEqual:@"assistant"]) [self.history addObject:@{@"role": row[@"role"], @"content": row[@"text"]}];
-        }
+    self.pendingImages = [NSMutableArray array];
+    NSData *saved = [NSData dataWithContentsOfURL:[T32StateURL() URLByAppendingPathComponent:@"chats.json"]];
+    NSDictionary *state = saved ? [NSJSONSerialization JSONObjectWithData:saved options:NSJSONReadingMutableContainers error:nil] : nil;
+    self.threads = [state[@"threads"] isKindOfClass:NSArray.class] ? [state[@"threads"] mutableCopy] : [NSMutableArray array];
+    if (!self.threads.count) {
+        NSData *legacy = [NSData dataWithContentsOfURL:[T32StateURL() URLByAppendingPathComponent:@"chat.json"]];
+        NSArray *rows = legacy ? [NSJSONSerialization JSONObjectWithData:legacy options:0 error:nil] : @[];
+        [self.threads addObject:[@{@"id": NSUUID.UUID.UUIDString, @"title": @"First chat", @"rows": [rows isKindOfClass:NSArray.class] ? rows : @[]} mutableCopy]];
     }
-    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"folder"] style:UIBarButtonItemStylePlain target:self action:@selector(showFiles)];
-    self.navigationItem.leftBarButtonItem.accessibilityLabel = @"Imported files";
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"slider.horizontal.3"] style:UIBarButtonItemStylePlain target:self action:@selector(settings)];
-    self.navigationItem.rightBarButtonItem.accessibilityLabel = @"Groq settings";
+    self.activeThread = self.threads.firstObject;
+    for (NSMutableDictionary *thread in self.threads) if ([thread[@"id"] isEqual:state[@"active"]]) self.activeThread = thread;
+    [self activateThread:self.activeThread];
+    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"bubble.left.and.bubble.right"] style:UIBarButtonItemStylePlain target:self action:@selector(showChats)];
+    self.navigationItem.leftBarButtonItem.accessibilityLabel = @"Chats";
+    UIBarButtonItem *files = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"folder"] style:UIBarButtonItemStylePlain target:self action:@selector(showFiles)];
+    files.accessibilityLabel = @"Imported files";
+    UIBarButtonItem *settings = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"slider.horizontal.3"] style:UIBarButtonItemStylePlain target:self action:@selector(settings)];
+    settings.accessibilityLabel = @"Groq settings";
+    self.navigationItem.rightBarButtonItems = @[settings, files];
 
     self.table = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.table.dataSource = self;
@@ -233,7 +271,8 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
     self.selectedButton.accessibilityLabel = @"Selected file. Tap to choose another file.";
     [self.selectedButton addTarget:self action:@selector(showFiles) forControlEvents:UIControlEventTouchUpInside];
     [self.selectedButton.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
-    UIStackView *fileRow = [[UIStackView alloc] initWithArrangedSubviews:@[self.selectedButton, T32SymbolButton(@"play.fill", @"Run selected file", self, @selector(runFromButton))]];
+    self.runButton = T32SymbolButton(@"play.fill", @"Run selected file", self, @selector(runFromButton));
+    UIStackView *fileRow = [[UIStackView alloc] initWithArrangedSubviews:@[self.selectedButton, self.runButton]];
     fileRow.spacing = 8;
     [composer addArrangedSubview:fileRow];
 
@@ -242,7 +281,7 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
     inputRow.alignment = UIStackViewAlignmentBottom;
     inputRow.spacing = 8;
     [composer addArrangedSubview:inputRow];
-    [inputRow addArrangedSubview:T32SymbolButton(@"plus", @"Import file", self, @selector(openPicker))];
+    [inputRow addArrangedSubview:T32SymbolButton(@"plus", @"Add files or photos", self, @selector(attachments:))];
     self.input = [UITextView new];
     self.input.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     self.input.adjustsFontForContentSizeCategory = YES;
@@ -282,6 +321,71 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
     [center addObserver:self selector:@selector(receiveOutput:) name:@"T32TerminalOutput" object:nil];
     [self updateSelected];
     [self refresh];
+}
+- (void)showChats {
+    if (self.busy) return;
+    [self.view endEditing:YES];
+    T32ThreadsController *list = [[T32ThreadsController alloc] initWithStyle:UITableViewStyleInsetGrouped]; list.chat = self;
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:list];
+    nav.modalPresentationStyle = UIModalPresentationFormSheet;
+    [self presentViewController:nav animated:YES completion:nil];
+}
+- (void)newChat {
+    if (self.busy) return;
+    [self persistRows];
+    NSMutableDictionary *thread = [@{@"id": NSUUID.UUID.UUIDString, @"title": @"New chat", @"rows": @[]} mutableCopy];
+    [self.threads insertObject:thread atIndex:0]; [self activateThread:thread]; [self persistRows];
+}
+- (void)activateThread:(NSMutableDictionary *)thread {
+    if (self.busy) return;
+    if (self.activeThread && self.activeThread != thread) [self persistRows];
+    self.activeThread = thread; self.title = thread[@"title"] ?: @"New chat";
+    self.rows = [thread[@"rows"] mutableCopy] ?: [NSMutableArray array];
+    self.history = [NSMutableArray array]; [self.pendingImages removeAllObjects];
+    self.store.selected = nil;
+    for (NSDictionary *file in self.store.files) if ([file[@"relative"] isEqual:thread[@"selected"]]) self.store.selected = file;
+    for (NSDictionary *row in self.rows) {
+        if ([row[@"role"] isEqual:@"user"] || [row[@"role"] isEqual:@"assistant"])
+            [self.history addObject:@{@"role":row[@"role"], @"content": T32MessageContent(row)}];
+    }
+    self.input.text = @""; [self updateSelected]; [self refresh];
+}
+- (void)attachments:(UIButton *)sender {
+    if (self.busy) return;
+    [self.view endEditing:YES];
+    UIAlertController *menu = [UIAlertController alertControllerWithTitle:@"Add attachment" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    [menu addAction:[UIAlertAction actionWithTitle:@"Files" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { [self openPicker]; }]];
+    [menu addAction:[UIAlertAction actionWithTitle:@"Photos" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+        PHPickerConfiguration *config = [PHPickerConfiguration new]; config.filter = PHPickerFilter.imagesFilter; config.selectionLimit = 3;
+        PHPickerViewController *picker = [[PHPickerViewController alloc] initWithConfiguration:config]; picker.delegate = self;
+        [self presentViewController:picker animated:YES completion:nil];
+    }]];
+    [menu addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    menu.popoverPresentationController.sourceView = sender; menu.popoverPresentationController.sourceRect = sender.bounds;
+    [self presentViewController:menu animated:YES completion:nil];
+}
+- (void)picker:(PHPickerViewController *)picker didFinishPicking:(NSArray<PHPickerResult *> *)results {
+    [picker dismissViewControllerAnimated:YES completion:nil];
+    if (!results.count) return;
+    self.busy = YES; [self refresh]; self.statusLabel.text = @"Loading photos…";
+    dispatch_group_t group = dispatch_group_create(); NSMutableArray *urls = [NSMutableArray array];
+    for (PHPickerResult *result in results) {
+        dispatch_group_enter(group);
+        [result.itemProvider loadFileRepresentationForTypeIdentifier:@"public.image" completionHandler:^(NSURL *url, NSError *error) {
+            if (url) {
+                NSURL *folder = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString]];
+                [NSFileManager.defaultManager createDirectoryAtURL:folder withIntermediateDirectories:YES attributes:nil error:nil];
+                NSURL *copy = [folder URLByAppendingPathComponent:url.lastPathComponent];
+                if ([NSFileManager.defaultManager copyItemAtURL:url toURL:copy error:nil]) @synchronized(urls) { [urls addObject:copy]; }
+            }
+            dispatch_group_leave(group);
+        }];
+    }
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+        self.busy = NO;
+        if (urls.count) [self documentPicker:nil didPickDocumentsAtURLs:urls];
+        else { [self addRole:@"local" text:@"Could not load the selected photos. Try importing them through Files."]; [self refresh]; }
+    });
 }
 - (void)dealloc {
     [NSNotificationCenter.defaultCenter removeObserver:self];
@@ -345,6 +449,9 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
         dispatch_async(dispatch_get_main_queue(), ^{
             [self.store.files addObjectsFromArray:records];
             [self.store save];
+            for (NSDictionary *record in records) {
+                if (T32ImageForRecord(record) && self.pendingImages.count < 3) [self.pendingImages addObject:record];
+            }
             if (records.count) [self selectFile:records.lastObject];
             for (NSString *failure in failures) [self addRole:@"local" text:failure];
             void (^completion)(NSString *) = self.pickerCompletion;
@@ -362,14 +469,17 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
 }
 - (void)selectFile:(NSDictionary *)file {
     self.store.selected = file;
+    if (T32ImageForRecord(file) && ![self.pendingImages containsObject:file] && self.pendingImages.count < 3) [self.pendingImages addObject:file];
     [self updateSelected];
+    if (T32ImageForRecord(file)) { [self addRole:@"local" text:@"Image attached. Add a message and tap Send."]; return; }
     [self addRole:@"local" text:[NSString stringWithFormat:@"Selected %@. Say “run this file” to execute it, or ask me to explain it.", file[@"name"]]];
 }
 - (void)updateSelected {
     self.selectedButton.superview.hidden = !self.store.selected;
+    self.runButton.hidden = ![@[@"py", @"sh", @"js", @"lua"] containsObject:[self.store.selected[@"name"] pathExtension].lowercaseString];
     if (self.store.selected) {
         [self.selectedButton setImage:[UIImage systemImageNamed:@"doc.text"] forState:UIControlStateNormal];
-        [self.selectedButton setTitle:[@"  " stringByAppendingString:self.store.selected[@"name"]] forState:UIControlStateNormal];
+        [self.selectedButton setTitle:[@"  " stringByAppendingString:(self.pendingImages.count ? [NSString stringWithFormat:@"%lu image(s) attached", (unsigned long)self.pendingImages.count] : self.store.selected[@"name"])] forState:UIControlStateNormal];
     }
 }
 - (void)runFromButton {
@@ -390,8 +500,11 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
     [self refresh];
 }
 - (void)persistRows {
-    NSData *data = [NSJSONSerialization dataWithJSONObject:self.rows options:0 error:nil];
-    [data writeToURL:[T32StateURL() URLByAppendingPathComponent:@"chat.json"] options:NSDataWritingAtomic error:nil];
+    if (!self.activeThread) return;
+    self.activeThread[@"rows"] = [self.rows copy];
+    self.activeThread[@"selected"] = self.store.selected[@"relative"] ?: @"";
+    NSData *data = [NSJSONSerialization dataWithJSONObject:@{@"active":self.activeThread[@"id"], @"threads":self.threads} options:0 error:nil];
+    [data writeToURL:[T32StateURL() URLByAppendingPathComponent:@"chats.json"] options:NSDataWritingAtomic error:nil];
 }
 - (void)refresh {
     [self.table reloadData];
@@ -431,12 +544,19 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
     text.layer.cornerRadius = 18;
     text.textContainerInset = UIEdgeInsetsMake(12, 14, 12, 14);
     text.translatesAutoresizingMaskIntoConstraints = NO;
-    [cell.contentView addSubview:text];
+    UIStackView *bubble = [UIStackView new]; bubble.axis = UILayoutConstraintAxisVertical; bubble.spacing = 6; bubble.translatesAutoresizingMaskIntoConstraints = NO;
+    for (NSDictionary *record in row[@"images"]) {
+        UIImage *image = T32ImageForRecord(record); if (!image) continue;
+        UIImageView *preview = [[UIImageView alloc] initWithImage:image]; preview.contentMode = UIViewContentModeScaleAspectFit;
+        preview.clipsToBounds = YES; preview.layer.cornerRadius = 16; preview.accessibilityLabel = record[@"name"]; preview.isAccessibilityElement = YES;
+        [preview.heightAnchor constraintEqualToConstant:220].active = YES; [bubble addArrangedSubview:preview];
+    }
+    [bubble addArrangedSubview:text]; [cell.contentView addSubview:bubble];
     [NSLayoutConstraint activateConstraints:@[
-        [text.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:5],
-        [text.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-5],
-        [text.leadingAnchor constraintEqualToAnchor:cell.contentView.layoutMarginsGuide.leadingAnchor constant:user ? 38 : 0],
-        [text.trailingAnchor constraintEqualToAnchor:cell.contentView.layoutMarginsGuide.trailingAnchor constant:user ? 0 : -12]
+        [bubble.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:5],
+        [bubble.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-5],
+        [bubble.leadingAnchor constraintEqualToAnchor:cell.contentView.layoutMarginsGuide.leadingAnchor constant:user ? 38 : 0],
+        [bubble.trailingAnchor constraintEqualToAnchor:cell.contentView.layoutMarginsGuide.trailingAnchor constant:user ? 0 : -12]
     ]];
     return cell;
 }
@@ -448,7 +568,8 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
     }
     if (self.busy) return;
     NSString *text = [self.input.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if (!text.length) return;
+    if (!text.length && !self.pendingImages.count) return;
+    if (!text.length) text = @"Describe this image.";
     self.input.text = @"";
     [self textViewDidChange:self.input];
     if ([text hasPrefix:@"gsk_"] && [text rangeOfCharacterFromSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].location == NSNotFound) {
@@ -456,7 +577,10 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
         [self addRole:@"local" text:status == errSecSuccess ? @"Groq key saved in Keychain." : @"The key could not be saved. Open Settings and try again."];
         return;
     }
-    [self addRole:@"user" text:text];
+    NSDictionary *userRow = @{@"role":@"user", @"text":text, @"images":[self.pendingImages copy]};
+    [self.pendingImages removeAllObjects]; [self updateSelected];
+    if (![self.activeThread[@"rows"] count]) { self.activeThread[@"title"] = [text substringToIndex:MIN((NSUInteger)42, text.length)]; self.title = self.activeThread[@"title"]; }
+    [self.rows addObject:userRow]; [self persistRows]; [self refresh];
     self.requestGeneration++;
     self.toolRounds = 0;
     self.ranThisTurn = NO;
@@ -482,7 +606,7 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
         [self settings];
         return;
     }
-    [self.history addObject:@{ @"role": @"user", @"content": text }];
+    [self.history addObject:@{ @"role": @"user", @"content": T32MessageContent(userRow) }];
     // Trim at complete user-turn boundaries, so tool-call/result pairs stay together.
     while (self.history.count > 40) {
         NSUInteger nextUser = NSNotFound;

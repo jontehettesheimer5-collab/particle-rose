@@ -80,6 +80,7 @@ controller_header = source / 'app/TerminalViewController.h'
 controller_header.write_text(controller_header.read_text().replace('- (void)startNewSession;', '- (void)startNewSession;\n- (BOOL)t32CanRunCommand;\n- (void)t32RunCommand:(NSString *)command;'))
 controller_path = source / 'app/TerminalViewController.m'
 controller = controller_path.read_text()
+controller = controller.replace('    [self.termView becomeFirstResponder];', '')
 controller = controller.replace('- (void)startNewSession {', '''- (BOOL)t32CanRunCommand {
     return self.terminal == self.sessionTerminal && self.sessionTerminal.loaded && [self.sessionTerminal t32ShellForeground:self.sessionPid];
 }
@@ -92,6 +93,9 @@ controller = controller.replace('- (void)startNewSession {', '''- (BOOL)t32CanRu
 
 - (void)startNewSession {''')
 controller_path.write_text(controller)
+terminal_view_path = source / 'app/TerminalView.m'
+terminal_view = terminal_view_path.read_text().replace('if (!self.isFirstResponder) {', 'if (!self.isFirstResponder && self.window != nil && !self.window.hidden) {')
+terminal_view_path.write_text(terminal_view)
 
 group_path = source / 'app/AppGroup.m'
 group = group_path.read_text()

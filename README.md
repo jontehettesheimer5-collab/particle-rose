@@ -6,6 +6,10 @@ This build uses the upstream iSH emulator, terminal, settings, sessions, Linux f
 
 ## Chat and file import
 
+The chats button opens separate saved conversations; use its + button for a new chat. Each conversation keeps its own messages and selected file. The app opens on Chat without focusing the keyboard. Tap the input to type.
+
+The composer + offers Files and Photos. Up to three images can be attached to a message, including image-only messages. Images appear in the transcript and are resized before sending. Messages containing images automatically use Groq's vision model. Imported files stay in the app; sent image attachments and requested text previews/output are transmitted to Groq.
+
 The Chat tab has a direct file picker. Tap + to select one or more files up to 20 MB each from the Files app, including iCloud and other document providers. Imported copies are kept in the app and exposed inside Linux under `/imports`. The folder icon lists previously imported files. Select a file, then tap its play button or say “execute the file”. Output and the actual exit code appear in chat. The Terminal tab provides the full shell and interactive program input.
 
 Groq Settings accepts an API key and model ID. Keys are stored in the device Keychain and are never embedded in the source or IPA. The default model is `openai/gpt-oss-120b`. Chat requests go directly to Groq over HTTPS. File content is sent when the assistant reads a selected file, and execution output is included in tool results. Execution requires an explicit run request and runs at most once per chat turn. The model cannot issue arbitrary shell commands. JavaScript and Lua execution require their interpreters to be installed.

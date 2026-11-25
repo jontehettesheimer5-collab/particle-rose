@@ -48,12 +48,18 @@ static void T32SmokeWrite(NSDictionary *result) {
     [data writeToURL:[documents URLByAppendingPathComponent:@"smoke-result.json"] atomically:YES];
 }
 
+static BOOL T32HasResponder(UIView *view) {
+    if (view.isFirstResponder) return YES;
+    for (UIView *child in view.subviews) if (T32HasResponder(child)) return YES;
+    return NO;
+}
+
 static void T32StartSmoke(T32ChatController *chat) {
     if (![NSProcessInfo.processInfo.arguments containsObject:@"--t32-smoke"]) return;
     [chat loadViewIfNeeded];
     OSStatus status = T32SaveKey(@"simulator-test-key");
     if (status != errSecSuccess || ![T32ReadKey() isEqual:@"simulator-test-key"]) {
-        T32SmokeWrite(@{@"passed": @NO, @"error": @"Keychain round trip failed"});
+        T32SmokeWrite(@{@"passed": @NO, @"error": @"Keychain round trip failed", @"status": @(status)});
         return;
     }
     NSURLSessionConfiguration *configuration = NSURLSessionConfiguration.ephemeralSessionConfiguration;
@@ -71,6 +77,9 @@ static void T32StartSmoke(T32ChatController *chat) {
             return;
         }
         if (phase == 0 && [chat.terminalController t32CanRunCommand]) {
+            if (T32HasResponder(chat.view.window) || T32HasResponder(chat.terminalController.view)) {
+                T32SmokeWrite(@{@"passed":@NO, @"error":@"Keyboard focused on launch"}); [timer invalidate]; return;
+            }
             chat.input.text = @"Please locate my script";
             [chat send];
             phase = 1;
@@ -91,6 +100,13 @@ static void T32StartSmoke(T32ChatController *chat) {
                 [texts addObject:row[@"text"]];
                 if ([row[@"text"] containsString:@"Exit code 0"] && [row[@"text"] containsString:@"T32_IMPORT_OK"]) passed = YES;
             }
+            NSMutableDictionary *original = chat.activeThread;
+            NSUInteger oldCount = chat.rows.count;
+            [chat newChat];
+            BOOL threadsWork = chat.rows.count == 0 && chat.history.count == 0 && chat.threads.count == 2;
+            [chat activateThread:original];
+            threadsWork = threadsWork && chat.rows.count == oldCount;
+            passed = passed && threadsWork;
             [timer invalidate];
             T32SmokeWrite(@{@"passed": @(passed), @"phase": @(phase), @"messages": texts,
                 @"checks": @[@"Keychain", @"Groq tool-response parsing (mocked)", @"Native file picker presentation", @"Native file import", @"Quoted script execution", @"Local output and exit code"]});

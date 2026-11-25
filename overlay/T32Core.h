@@ -2,6 +2,7 @@
 #pragma once
 #import <UIKit/UIKit.h>
 #import <Security/Security.h>
+#import <ImageIO/ImageIO.h>
 #import "TerminalViewController.h"
 #import "T32Mount.h"
 
@@ -14,6 +15,35 @@ static NSURL *T32StateURL(void) {
     NSURL *directory = [support URLByAppendingPathComponent:@"Terminal32" isDirectory:YES];
     [NSFileManager.defaultManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:nil];
     return directory;
+}
+
+static UIImage *T32ImageForRecord(NSDictionary *record) {
+    if (![record[@"relative"] isKindOfClass:NSString.class]) return nil;
+    NSURL *url = [T32ImportsURL() URLByAppendingPathComponent:record[@"relative"]];
+    CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)url, NULL);
+    if (!source) return nil;
+    NSDictionary *options = @{(__bridge id)kCGImageSourceCreateThumbnailFromImageAlways: @YES,
+                              (__bridge id)kCGImageSourceThumbnailMaxPixelSize: @1600,
+                              (__bridge id)kCGImageSourceCreateThumbnailWithTransform: @YES};
+    CGImageRef thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, (__bridge CFDictionaryRef)options);
+    CFRelease(source);
+    if (!thumbnail) return nil;
+    UIImage *image = [UIImage imageWithCGImage:thumbnail];
+    CGImageRelease(thumbnail);
+    return image;
+}
+
+static id T32MessageContent(NSDictionary *row) {
+    NSMutableArray *parts = [NSMutableArray arrayWithObject:@{@"type": @"text", @"text": row[@"text"] ?: @""}];
+    for (NSDictionary *record in row[@"images"]) {
+        UIImage *image = T32ImageForRecord(record);
+        if (!image) continue;
+        NSData *jpeg = UIImageJPEGRepresentation(image, 0.75);
+        if (!jpeg) continue;
+        NSString *url = [@"data:image/jpeg;base64," stringByAppendingString:[jpeg base64EncodedStringWithOptions:0]];
+        [parts addObject:@{@"type": @"image_url", @"image_url": @{@"url": url}}];
+    }
+    return parts.count > 1 ? parts : (row[@"text"] ?: @"");
 }
 
 static NSMutableDictionary *T32KeyQuery(void) {
@@ -64,7 +94,7 @@ static OSStatus T32SaveKey(NSString *key) {
         for (id item in saved) {
             if (![item isKindOfClass:NSDictionary.class]) continue;
             NSString *relative = item[@"relative"];
-            if (![relative isKindOfClass:NSString.class] || [relative containsString:@".."] || relative.isAbsolutePath) continue;
+            if (![relative isKindOfClass:NSString.class] || [relative.pathComponents containsObject:@".."] || relative.isAbsolutePath) continue;
             if ([NSFileManager.defaultManager fileExistsAtPath:[T32ImportsURL() URLByAppendingPathComponent:relative].path]) [self.files addObject:item];
         }
         self.selected = self.files.lastObject;
@@ -138,9 +168,30 @@ static OSStatus T32SaveKey(NSString *key) {
         tool(@"read_selected_file", @"Read up to 32 KB of the selected file when the user asks to inspect or explain its contents.", @{}),
         tool(@"run_selected_file", @"Execute the selected script locally only when the user's current message explicitly requests execution. The result contains actual output and an exit code.", @{ @"arguments": @{ @"type": @"array", @"items": @{ @"type": @"string" }, @"description": @"Optional script arguments." } })
     ];
-    NSString *model = [NSUserDefaults.standardUserDefaults stringForKey:@"T32GroqModel"] ?: @"openai/gpt-oss-120b";
-    NSDictionary *body = @{ @"model": model, @"messages": messages, @"tools": tools, @"parallel_tool_calls": @NO,
-                           @"max_completion_tokens": @2048, @"temperature": @0.3 };
+    // Groq's vision model accepts three images across the entire request.
+    NSMutableArray *prepared = [NSMutableArray array];
+    NSUInteger remainingImages = 3;
+    BOOL hasImages = NO;
+    for (NSDictionary *message in messages.reverseObjectEnumerator) {
+        NSMutableDictionary *copy = [message mutableCopy];
+        if ([message[@"content"] isKindOfClass:NSArray.class]) {
+            NSMutableArray *parts = [NSMutableArray array];
+            for (NSDictionary *part in [message[@"content"] reverseObjectEnumerator]) {
+                if ([part[@"type"] isEqual:@"image_url"]) {
+                    if (!remainingImages) continue;
+                    remainingImages--;
+                    hasImages = YES;
+                }
+                [parts insertObject:part atIndex:0];
+            }
+            copy[@"content"] = parts;
+        }
+        [prepared insertObject:copy atIndex:0];
+    }
+    NSString *model = hasImages ? @"qwen/qwen3.8-27b" : ([NSUserDefaults.standardUserDefaults stringForKey:@"T32GroqModel"] ?: @"openai/gpt-oss-120b");
+    NSMutableDictionary *body = [@{ @"model": model, @"messages": prepared, @"tools": tools, @"parallel_tool_calls": @NO,
+                           @"max_completion_tokens": @2048, @"temperature": @0.3 } mutableCopy];
+    if ([model hasPrefix:@"qwen/"]) body[@"reasoning_effort"] = @"none";
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:@"https://api.groq.com/openai/v1/chat/completions"]];
     request.HTTPMethod = @"POST";
     request.timeoutInterval = 60;
