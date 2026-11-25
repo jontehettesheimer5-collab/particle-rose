@@ -790,6 +790,8 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
 
 static UIViewController *T32MakeWorkspace(TerminalViewController *terminal) {
     [terminal loadViewIfNeeded];
+    // Start loading the terminal renderer even while Chat is the visible tab.
+    (void)terminal.terminal.webView;
     [terminal.view endEditing:YES];
     terminal.title = @"Terminal";
     terminal.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Terminal" image:[UIImage systemImageNamed:@"terminal"] tag:1];

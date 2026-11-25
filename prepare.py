@@ -82,7 +82,7 @@ controller_path = source / 'app/TerminalViewController.m'
 controller = controller_path.read_text()
 controller = controller.replace('    [self.termView becomeFirstResponder];', '')
 controller = controller.replace('- (void)startNewSession {', '''- (BOOL)t32CanRunCommand {
-    return self.terminal == self.sessionTerminal && self.sessionTerminal.loaded && [self.sessionTerminal t32ShellForeground:self.sessionPid];
+    return self.terminal == self.sessionTerminal && [self.sessionTerminal t32ShellForeground:self.sessionPid];
 }
 
 - (void)t32RunCommand:(NSString *)command {

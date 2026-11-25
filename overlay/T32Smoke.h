@@ -77,7 +77,7 @@ static void T32StartSmoke(T32ChatController *chat) {
             T32SmokeWrite(@{@"passed": @NO, @"phase": @(phase), @"messages": texts});
             return;
         }
-        if (phase == 0 && [chat.terminalController t32CanRunCommand]) {
+        if (phase == 0 && chat.view.window) {
             if (T32HasResponder(chat.view.window) || T32HasResponder(chat.terminalController.view)) {
                 T32SmokeWrite(@{@"passed":@NO, @"error":@"Keyboard focused on launch"}); [timer invalidate]; return;
             }
