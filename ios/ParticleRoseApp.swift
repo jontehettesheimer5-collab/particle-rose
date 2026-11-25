@@ -19,6 +19,12 @@ struct RoseView: UIViewRepresentable {
         let configuration = WKWebViewConfiguration()
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
+        let deviceScript = WKUserScript(
+            source: "window.isIPad = \(UIDevice.current.userInterfaceIdiom == .pad ? "true" : "false");",
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        )
+        configuration.userContentController.addUserScript(deviceScript)
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.isOpaque = false
         webView.backgroundColor = .black
