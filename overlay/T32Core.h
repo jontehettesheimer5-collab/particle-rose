@@ -120,6 +120,7 @@ static OSStatus T32SaveKey(NSString *key) {
 
 @interface T32GroqClient : NSObject
 @property (nonatomic, strong) NSURLSessionDataTask *task;
+@property (nonatomic, strong) NSURLSession *session;
 - (void)replyTo:(NSArray *)messages completion:(void (^)(NSDictionary *, NSString *))completion;
 @end
 
@@ -146,7 +147,8 @@ static OSStatus T32SaveKey(NSString *key) {
     [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
     [request setValue:[@"Bearer " stringByAppendingString:key] forHTTPHeaderField:@"Authorization"];
     request.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
-    self.task = [NSURLSession.sharedSession dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+    NSURLSession *session = self.session ?: NSURLSession.sharedSession;
+    self.task = [session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         NSDictionary *json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
         NSInteger status = [(NSHTTPURLResponse *)response statusCode];
         NSString *failure;

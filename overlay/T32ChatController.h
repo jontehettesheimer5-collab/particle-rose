@@ -633,6 +633,8 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
 }
 @end
 
+#import "T32Smoke.h"
+
 static UIViewController *T32MakeWorkspace(TerminalViewController *terminal) {
     [terminal loadViewIfNeeded];
     [terminal.view endEditing:YES];
@@ -648,5 +650,8 @@ static UIViewController *T32MakeWorkspace(TerminalViewController *terminal) {
     tabs.selectedIndex = 0;
     tabs.tabBar.tintColor = [UIColor colorWithRed:0.91 green:0.35 blue:0.60 alpha:1];
     navigation.navigationBar.tintColor = tabs.tabBar.tintColor;
+#if TARGET_OS_SIMULATOR
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ T32StartSmoke(chat); });
+#endif
     return tabs;
 }

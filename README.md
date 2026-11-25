@@ -4,6 +4,16 @@ An iSH-based local Linux terminal customized by 32e4. On opening, a pink particl
 
 This build uses the upstream iSH emulator, terminal, settings, sessions, Linux filesystem and networking. It supports iPhone and iPad in portrait and landscape. The installed app is named Terminal32 and has a separate bundle identifier from the video app.
 
+## Chat and file import
+
+The Chat tab has a direct file picker. Tap + to select one or more files up to 20 MB each from the Files app, including iCloud and other document providers. Imported copies are kept in the app and exposed inside Linux under `/imports`. The folder icon lists previously imported files. Select a file, then tap its play button or say “execute the file”. Output and the actual exit code appear in chat. The Terminal tab provides the full shell and interactive program input.
+
+Groq Settings accepts an API key and model ID. Keys are stored in the device Keychain and are never embedded in the source or IPA. The default model is `openai/gpt-oss-120b`. Chat requests go directly to Groq over HTTPS. File content is sent when the assistant reads a selected file, and execution output is included in tool results. Execution requires an explicit run request and runs at most once per chat turn. The model cannot issue arbitrary shell commands. JavaScript and Lua execution require their interpreters to be installed.
+
+The native UI uses system typography, adaptive layouts, 44-point controls, selectable message text, concise status feedback, and native sheets. Design guidance was read from Emil Kowalski's `emil-design-eng` and `apple-design` skills at https://github.com/emilkowalski/skills, commit `64eb3deb9a5fbfa041faf783e0bc3fd635872e9c`. The flower intro still supports Reduce Motion.
+
+The build includes a simulator-only regression check for Keychain, mocked Groq tool calls, file picker presentation, native import and script execution with a filename containing an apostrophe and spaces. The test checks actual shell output and exit status. Groq API access with a real account and physical-device file providers require device verification.
+
 ## Python and tools
 
 On the first launch, run `setup-dev` in the terminal with an internet connection. It installs Python 3, pip, requests, Bash, Git, curl, wget, nano and the OpenSSH client. It creates a persistent Python virtual environment. Open a new shell afterward or run `. /root/.venv/bin/activate`.
