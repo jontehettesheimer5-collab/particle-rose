@@ -72,7 +72,7 @@ jobs:
           cd upstream
           xcodebuild -project iSH.xcodeproj -scheme iSH -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath ../sim-build CODE_SIGNING_ALLOWED=NO \
+            -derivedDataPath ../sim-build CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
             ROOT_BUNDLE_IDENTIFIER=com.thirtytwoe4.terminal32 build > ../sim-build.log 2>&1 || {
               tail -n 180 ../sim-build.log
               exit 1
