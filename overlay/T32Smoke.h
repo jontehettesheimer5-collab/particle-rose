@@ -68,6 +68,7 @@ static void T32StartSmoke(T32ChatController *chat) {
     __block NSUInteger ticks = 0;
     __block NSUInteger phase = 0;
     __block BOOL earlierChecks = NO;
+    __block NSArray *scriptMessages = @[];
     [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *timer) {
         ticks++;
         if (ticks > 160) {
@@ -102,6 +103,7 @@ static void T32StartSmoke(T32ChatController *chat) {
                 if ([row[@"text"] containsString:@"Exit code 0"] && [row[@"text"] containsString:@"T32_IMPORT_OK"]) passed = YES;
             }
             NSMutableDictionary *original = chat.activeThread;
+            scriptMessages = [texts copy];
             NSUInteger oldCount = chat.rows.count;
             [chat newChat];
             BOOL threadsWork = chat.rows.count == 0 && chat.history.count == 0 && chat.threads.count == 2;
@@ -124,7 +126,7 @@ static void T32StartSmoke(T32ChatController *chat) {
             BOOL imageStored = NO;
             for (NSDictionary *row in chat.rows) if ([row[@"images"] count]) imageStored = YES;
             [timer invalidate];
-            T32SmokeWrite(@{@"passed":@(earlierChecks && imagePassed && imageStored), @"phase":@(phase), @"messages":chat.rows,
+            T32SmokeWrite(@{@"passed":@(earlierChecks && imagePassed && imageStored), @"phase":@(phase), @"messages":chat.rows, @"scriptMessages":scriptMessages,
                 @"checks":@[@"Keyboard unfocused at startup", @"Groq tools (mocked)", @"Native file picker", @"File import and quoted script execution", @"Output and exit code", @"Separate chat histories", @"Image import, message and vision payload (mocked)"],
                 @"deviceChecksRemaining":@[@"Keychain with KSign provisioning", @"Physical Photos and iCloud providers"]});
         }

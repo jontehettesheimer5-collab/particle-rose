@@ -154,6 +154,8 @@ static OSStatus T32SaveKey(NSString *key) {
 @end
 
 @interface T32GroqClient : NSObject
+@property (nonatomic) BOOL toolsEnabled;
+@property (nonatomic) BOOL scriptToolEnabled;
 @property (nonatomic, strong) NSURLSessionDataTask *task;
 @property (nonatomic, strong) NSURLSession *session;
 - (void)replyTo:(NSArray *)messages completion:(void (^)(NSDictionary *, NSString *))completion;
@@ -194,8 +196,12 @@ static OSStatus T32SaveKey(NSString *key) {
         [prepared insertObject:copy atIndex:0];
     }
     NSString *model = hasImages ? @"qwen/qwen3.8-27b" : ([NSUserDefaults.standardUserDefaults stringForKey:@"T32GroqModel"] ?: @"openai/gpt-oss-120b");
-    NSMutableDictionary *body = [@{ @"model": model, @"messages": prepared, @"tools": tools, @"parallel_tool_calls": @NO,
+    NSMutableDictionary *body = [@{ @"model": model, @"messages": prepared,
                            @"max_completion_tokens": @2048, @"temperature": @0.3 } mutableCopy];
+    if (self.toolsEnabled) {
+        body[@"tools"] = self.scriptToolEnabled ? tools : [tools subarrayWithRange:NSMakeRange(0, tools.count - 1)];
+        body[@"parallel_tool_calls"] = @NO;
+    }
     if ([model hasPrefix:@"qwen/"]) body[@"reasoning_effort"] = @"none";
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:@"https://api.groq.com/openai/v1/chat/completions"]];
     request.HTTPMethod = @"POST";
