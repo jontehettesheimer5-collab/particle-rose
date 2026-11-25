@@ -579,7 +579,9 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
     }
     NSDictionary *userRow = @{@"role":@"user", @"text":text, @"images":[self.pendingImages copy]};
     [self.pendingImages removeAllObjects]; [self updateSelected];
-    if (![self.activeThread[@"rows"] count]) { self.activeThread[@"title"] = [text substringToIndex:MIN((NSUInteger)42, text.length)]; self.title = self.activeThread[@"title"]; }
+    BOOL hasUserMessage = NO;
+    for (NSDictionary *row in self.rows) if ([row[@"role"] isEqual:@"user"]) hasUserMessage = YES;
+    if (!hasUserMessage) { self.activeThread[@"title"] = [text substringToIndex:MIN((NSUInteger)42, text.length)]; self.title = self.activeThread[@"title"]; }
     [self.rows addObject:userRow]; [self persistRows]; [self refresh];
     self.requestGeneration++;
     self.toolRounds = 0;

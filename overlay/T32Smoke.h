@@ -24,7 +24,12 @@
     NSArray *messages = request[@"messages"];
     NSDictionary *last = messages.lastObject;
     NSDictionary *message;
-    if ([last[@"role"] isEqual:@"tool"]) {
+    if ([last[@"content"] isKindOfClass:NSArray.class]) {
+        BOOL vision = [request[@"model"] isEqual:@"qwen/qwen3.8-27b"];
+        BOOL image = NO;
+        for (NSDictionary *part in last[@"content"]) if ([part[@"type"] isEqual:@"image_url"]) image = YES;
+        message = @{@"role":@"assistant", @"content":vision && image ? @"Vision payload accepted" : @"Invalid image payload"};
+    } else if ([last[@"role"] isEqual:@"tool"]) {
         message = @{ @"role": @"assistant", @"content": @"Tool completed." };
     } else {
         NSString *text = [last[@"content"] lowercaseString];
@@ -67,6 +72,7 @@ static void T32StartSmoke(T32ChatController *chat) {
     chat.client.session = [NSURLSession sessionWithConfiguration:configuration];
     __block NSUInteger ticks = 0;
     __block NSUInteger phase = 0;
+    __block BOOL earlierChecks = NO;
     [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *timer) {
         ticks++;
         if (ticks > 160) {
@@ -107,9 +113,24 @@ static void T32StartSmoke(T32ChatController *chat) {
             [chat activateThread:original];
             threadsWork = threadsWork && chat.rows.count == oldCount;
             passed = passed && threadsWork;
+            earlierChecks = passed;
+            [chat newChat];
+            UIGraphicsBeginImageContextWithOptions(CGSizeMake(32, 32), YES, 1);
+            [UIColor.systemPinkColor setFill]; UIRectFill(CGRectMake(0, 0, 32, 32));
+            UIImage *image = UIGraphicsGetImageFromCurrentImageContext(); UIGraphicsEndImageContext();
+            NSURL *fixture = [[NSURL fileURLWithPath:NSTemporaryDirectory()] URLByAppendingPathComponent:@"flower-test.png"];
+            [UIImagePNGRepresentation(image) writeToURL:fixture atomically:YES];
+            [chat documentPicker:nil didPickDocumentsAtURLs:@[fixture]];
+            phase = 4;
+        } else if (phase == 4 && !chat.busy && chat.pendingImages.count) {
+            chat.input.text = @"Describe the attached image"; [chat send]; phase = 5;
+        } else if (phase == 5 && !chat.busy) {
+            BOOL imagePassed = [chat.rows.lastObject[@"text"] isEqual:@"Vision payload accepted"];
+            BOOL imageStored = NO;
+            for (NSDictionary *row in chat.rows) if ([row[@"images"] count]) imageStored = YES;
             [timer invalidate];
-            T32SmokeWrite(@{@"passed": @(passed), @"phase": @(phase), @"messages": texts,
-                @"checks": @[@"Keychain", @"Groq tool-response parsing (mocked)", @"Native file picker presentation", @"Native file import", @"Quoted script execution", @"Local output and exit code"]});
+            T32SmokeWrite(@{@"passed":@(earlierChecks && imagePassed && imageStored), @"phase":@(phase), @"messages":chat.rows,
+                @"checks":@[@"Keychain", @"Keyboard unfocused at startup", @"Groq tools (mocked)", @"Native file picker", @"File import and quoted script execution", @"Output and exit code", @"Separate chat histories", @"Image import, message and vision payload (mocked)"]});
         }
     }];
 }
