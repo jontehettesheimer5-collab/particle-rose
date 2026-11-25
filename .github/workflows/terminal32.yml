@@ -47,7 +47,7 @@ jobs:
         run: |
           cd upstream
           xcodebuild -project iSH.xcodeproj -scheme iSH -configuration Release \
-            -arch arm64 -sdk iphoneos -destination 'generic/platform=iOS' \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
             -derivedDataPath ../build CODE_SIGNING_ALLOWED=NO \
             ROOT_BUNDLE_IDENTIFIER=com.thirtytwoe4.terminal32 build > ../build.log 2>&1 || {
               tail -n 180 ../build.log
