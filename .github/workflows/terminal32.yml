@@ -6,6 +6,29 @@ on:
 permissions:
   contents: read
 jobs:
+  runtime-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Get pinned iSH source
+        run: |
+          git clone https://github.com/ish-app/ish.git upstream
+          git -C upstream checkout ce96e698f1820b9d8db47e87c501ecb89119d7ce
+          git -C upstream submodule update --init --depth 1 deps/libapps deps/libarchive
+      - name: Build emulator for package smoke test
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y clang lld libarchive-dev meson ninja-build
+          meson setup upstream/build upstream -Dengine=asbestos
+          ninja -C upstream/build
+      - name: Check Python, pip, requests and terminal tools
+        run: |
+          curl -fL --retry 3 https://github.com/ish-app/roots/releases/download/g00712ff0a54b2839c5aa1a8ed758003ca65357dc/appstore-apk.tar.gz -o root.tar.gz
+          python3 prepare-root.py root.tar.gz
+          upstream/build/tools/fakefsify root.tar.gz runtime
+          cp /etc/resolv.conf runtime/data/etc/resolv.conf
+          timeout 600 upstream/build/ish -f runtime /bin/sh -lc 'setup-dev && . /root/.venv/bin/activate && python -c "import requests; print(requests.__version__)" && pip --version && git --version && curl --version && nano --version && pkg list python3'
   build:
     runs-on: macos-26
     timeout-minutes: 40
