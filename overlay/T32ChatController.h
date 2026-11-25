@@ -8,9 +8,10 @@
 @property (nonatomic, weak) T32ChatController *chat;
 @end
 
-@interface T32SettingsController : UIViewController
+@interface T32SettingsController : UIViewController <UITextFieldDelegate>
 @property (nonatomic, strong) UITextField *keyField;
 @property (nonatomic, strong) UITextField *modelField;
+@property (nonatomic, strong) UIScrollView *scroll;
 @end
 
 @interface T32ChatController : UIViewController <UITableViewDataSource, UITableViewDelegate, UITextViewDelegate, UIDocumentPickerDelegate>
@@ -66,15 +67,27 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
     self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel target:self action:@selector(close)];
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave target:self action:@selector(save)];
+    self.scroll = [UIScrollView new];
+    self.scroll.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
+    self.scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:self.scroll];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.scroll.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [self.scroll.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor],
+        [self.scroll.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.scroll.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor]
+    ]];
     UIStackView *stack = [UIStackView new];
     stack.axis = UILayoutConstraintAxisVertical;
     stack.spacing = 16;
     stack.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:stack];
+    [self.scroll addSubview:stack];
     [NSLayoutConstraint activateConstraints:@[
-        [stack.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:24],
-        [stack.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor constant:24],
-        [stack.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:-24]
+        [stack.topAnchor constraintEqualToAnchor:self.scroll.contentLayoutGuide.topAnchor constant:24],
+        [stack.leadingAnchor constraintEqualToAnchor:self.scroll.contentLayoutGuide.leadingAnchor constant:24],
+        [stack.trailingAnchor constraintEqualToAnchor:self.scroll.contentLayoutGuide.trailingAnchor constant:-24],
+        [stack.bottomAnchor constraintEqualToAnchor:self.scroll.contentLayoutGuide.bottomAnchor constant:-24],
+        [stack.widthAnchor constraintEqualToAnchor:self.scroll.frameLayoutGuide.widthAnchor constant:-48]
     ]];
     UILabel *keyLabel = [UILabel new];
     keyLabel.text = @"API key";
@@ -89,6 +102,8 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
     self.keyField.borderStyle = UITextBorderStyleRoundedRect;
     self.keyField.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     self.keyField.accessibilityLabel = @"Groq API key";
+    self.keyField.delegate = self;
+    self.keyField.returnKeyType = UIReturnKeyDone;
     [self.keyField.heightAnchor constraintGreaterThanOrEqualToConstant:48].active = YES;
     [stack addArrangedSubview:self.keyField];
     UILabel *modelLabel = [UILabel new];
@@ -102,6 +117,8 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
     self.modelField.borderStyle = UITextBorderStyleRoundedRect;
     self.modelField.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     self.modelField.accessibilityLabel = @"Groq model";
+    self.modelField.delegate = self;
+    self.modelField.returnKeyType = UIReturnKeyDone;
     [self.modelField.heightAnchor constraintGreaterThanOrEqualToConstant:48].active = YES;
     [stack addArrangedSubview:self.modelField];
     UILabel *explanation = [UILabel new];
@@ -111,6 +128,16 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
     explanation.text = @"Your key is stored in this device’s Keychain. Groq receives your chat messages and file text you ask the assistant to read. Imported files and script execution stay on this device. API usage follows your Groq account limits.";
     explanation.adjustsFontForContentSizeCategory = YES;
     [stack addArrangedSubview:explanation];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(keyboard:) name:UIKeyboardWillChangeFrameNotification object:nil];
+}
+- (void)dealloc { [NSNotificationCenter.defaultCenter removeObserver:self]; }
+- (BOOL)textFieldShouldReturn:(UITextField *)field { [field resignFirstResponder]; return YES; }
+- (void)keyboard:(NSNotification *)note {
+    CGRect frame = [self.view convertRect:[note.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue] fromView:nil];
+    CGFloat overlap = MAX(0, CGRectGetMaxY(self.view.bounds) - CGRectGetMinY(frame));
+    self.scroll.contentInset = UIEdgeInsetsMake(0, 0, overlap, 0);
+    UITextField *field = self.keyField.isFirstResponder ? self.keyField : self.modelField;
+    if (field.isFirstResponder) [self.scroll scrollRectToVisible:[self.scroll convertRect:field.bounds fromView:field] animated:NO];
 }
 - (void)close { [self dismissViewControllerAnimated:YES completion:nil]; }
 - (void)save {
@@ -397,7 +424,7 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
     text.editable = NO;
     text.scrollEnabled = NO;
     text.selectable = YES;
-    text.font = local ? [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular] : [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    text.font = local ? [UIFontMetrics.defaultMetrics scaledFontForFont:[UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular]] : [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     text.adjustsFontForContentSizeCategory = YES;
     text.textColor = local ? UIColor.secondaryLabelColor : UIColor.labelColor;
     text.backgroundColor = user ? UIColor.secondarySystemBackgroundColor : UIColor.clearColor;
@@ -436,7 +463,7 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
     self.pickedThisTurn = NO;
     NSString *lower = text.lowercaseString;
     BOOL negative = [lower containsString:@"don't"] || [lower containsString:@"do not"] || [lower containsString:@"nicht"];
-    NSRegularExpression *runWords = [NSRegularExpression regularExpressionWithPattern:@"\\b(run|execute|start|starte|ausführen|ausfuehren|führe|ausführen)\\b" options:NSRegularExpressionCaseInsensitive error:nil];
+    NSRegularExpression *runWords = [NSRegularExpression regularExpressionWithPattern:@"\\b(run|execute|start|starte|ausführen|ausfuehren|führe)\\b" options:NSRegularExpressionCaseInsensitive error:nil];
     self.allowRun = !negative && [runWords firstMatchInString:text options:0 range:NSMakeRange(0, text.length)] != nil;
     BOOL fileWord = [lower containsString:@"file"] || [lower containsString:@"datei"];
     BOOL pickWord = [lower containsString:@"find"] || [lower containsString:@"select"] || [lower containsString:@"upload"] || [lower containsString:@"choose"] || [lower containsString:@"such"] || [lower containsString:@"wähl"] || [lower containsString:@"import"];
