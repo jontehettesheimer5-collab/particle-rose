@@ -81,13 +81,6 @@ controller_header.write_text(controller_header.read_text().replace('- (void)star
 controller_path = source / 'app/TerminalViewController.m'
 controller = controller_path.read_text()
 controller = controller.replace('    [self.termView becomeFirstResponder];', '')
-# Opening the pseudoterminal assigns a controlling TTY only to a session leader.
-# Give each new shell its own session before wiring its standard streams.
-controller = controller.replace('    struct tty *tty;\n    self.sessionTerminal = nil;', '''    err = task_setsid(current);
-    if (err < 0)
-        return err;
-    struct tty *tty;
-    self.sessionTerminal = nil;''', 1)
 controller = controller.replace('- (void)startNewSession {', '''- (BOOL)t32CanRunCommand {
     return self.terminal == self.sessionTerminal && [self.sessionTerminal t32ShellForeground:self.sessionPid];
 }
