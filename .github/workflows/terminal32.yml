@@ -30,7 +30,7 @@ jobs:
           dns_config=$(cat /etc/resolv.conf)
           timeout 600 upstream/build/ish -f runtime /bin/sh -lc 'printf "%s\n" "$1" > /etc/resolv.conf; setup-dev && . /root/.venv/bin/activate && python -c "import requests; print(requests.__version__)" && pip --version && git --version && curl --version && nano --version && pkg list python3' sh "$dns_config"
   build:
-    runs-on: macos-26
+    runs-on: macos-15
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v6
@@ -43,12 +43,14 @@ jobs:
         run: brew install llvm lld ninja libarchive meson
       - name: Apply Terminal32 additions
         run: python3 prepare.py upstream
+      - name: Select stable Xcode
+        run: sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
       - name: Build iPhone and iPad app
         run: |
           cd upstream
           xcodebuild -project iSH.xcodeproj -scheme iSH -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' \
-            -derivedDataPath ../build CODE_SIGNING_ALLOWED=NO \
+            -derivedDataPath ../build CODE_SIGNING_ALLOWED=NO IPHONEOS_DEPLOYMENT_TARGET=14.0 \
             ROOT_BUNDLE_IDENTIFIER=com.thirtytwoe4.terminal32 build > ../build.log 2>&1 || {
               tail -n 180 ../build.log
               exit 1
@@ -72,20 +74,25 @@ jobs:
           cd upstream
           xcodebuild -project iSH.xcodeproj -scheme iSH -configuration Release \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath ../sim-build CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            -derivedDataPath ../sim-build CODE_SIGNING_ALLOWED=NO ARCHS="$(uname -m)" ONLY_ACTIVE_ARCH=YES IPHONEOS_DEPLOYMENT_TARGET=14.0 \
             ROOT_BUNDLE_IDENTIFIER=com.thirtytwoe4.terminal32 build > ../sim-build.log 2>&1 || {
               tail -n 180 ../sim-build.log
               exit 1
             }
           cd ..
           python3 prepare-root.py sim-build/Build/Products/Release-iphonesimulator/iSH.app/root.tar.gz
-          python3 -c 'import plistlib; plistlib.dump({"application-identifier":"T32SIM.com.thirtytwoe4.terminal32", "keychain-access-groups":["T32SIM.com.thirtytwoe4.terminal32"]}, open("sim-entitlements.plist","wb"))'
-          codesign --force --sign - --entitlements sim-entitlements.plist sim-build/Build/Products/Release-iphonesimulator/iSH.app
-          simulator_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]; print(next(d["udid"] for group in devices.values() for d in group if d["isAvailable"] and "iPhone" in d["name"]))')
+          rm -rf sim-build/Build/Products/Release-iphonesimulator/iSH.app/PlugIns
+          python3 -c 'import plistlib; plistlib.dump({"application-identifier":"T32SIM0000.com.thirtytwoe4.terminal32", "keychain-access-groups":["T32SIM0000.com.thirtytwoe4.terminal32"], "get-task-allow":True}, open("sim-entitlements.plist","wb"))'
+          codesign --force --deep --sign - --entitlements sim-entitlements.plist sim-build/Build/Products/Release-iphonesimulator/iSH.app
+          simulator_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]; print(next(d["udid"] for runtime,group in devices.items() if "iOS-18" in runtime for d in group if d["isAvailable"] and "iPhone" in d["name"]))')
           xcrun simctl boot "$simulator_id"
-          xcrun simctl bootstatus "$simulator_id" -b
+          python3 -c 'import subprocess,sys; subprocess.run(["xcrun","simctl","bootstatus",sys.argv[1],"-b"], timeout=600,check=True)' "$simulator_id"
           xcrun simctl install "$simulator_id" sim-build/Build/Products/Release-iphonesimulator/iSH.app
-          xcrun simctl launch "$simulator_id" com.thirtytwoe4.terminal32 --t32-smoke
+          xcrun simctl launch "$simulator_id" com.thirtytwoe4.terminal32 --t32-smoke || {
+            xcrun simctl spawn "$simulator_id" log show --last 3m --style compact --predicate 'eventMessage CONTAINS "terminal32"' > simulator-launch.log
+            xcrun simctl io "$simulator_id" screenshot chat-simulator.png
+            exit 1
+          }
           simulator_container=$(xcrun simctl get_app_container "$simulator_id" com.thirtytwoe4.terminal32 data)
           for attempt in $(seq 1 100); do
             if [ -f "$simulator_container/Documents/smoke-result.json" ]; then break; fi
@@ -103,6 +110,7 @@ jobs:
             chat-simulator.png
             smoke-result.json
             sim-build.log
+            simulator-launch.log
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: always()

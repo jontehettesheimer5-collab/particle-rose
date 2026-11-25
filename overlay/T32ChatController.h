@@ -221,7 +221,7 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
 @implementation T32ChatController
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"Terminal32";
+    self.navigationItem.title = @"Terminal32";
     self.view.backgroundColor = UIColor.systemBackgroundColor;
     self.store = [T32FileStore new];
     self.client = [T32GroqClient new];
@@ -339,7 +339,7 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
 - (void)activateThread:(NSMutableDictionary *)thread {
     if (self.busy) return;
     if (self.activeThread && self.activeThread != thread) [self persistRows];
-    self.activeThread = thread; self.title = thread[@"title"] ?: @"New chat";
+    self.activeThread = thread; self.navigationItem.title = thread[@"title"] ?: @"New chat";
     self.rows = [thread[@"rows"] mutableCopy] ?: [NSMutableArray array];
     self.history = [NSMutableArray array]; [self.pendingImages removeAllObjects];
     self.store.selected = nil;
@@ -581,7 +581,7 @@ static UIButton *T32SymbolButton(NSString *symbol, NSString *label, id target, S
     [self.pendingImages removeAllObjects]; [self updateSelected];
     BOOL hasUserMessage = NO;
     for (NSDictionary *row in self.rows) if ([row[@"role"] isEqual:@"user"]) hasUserMessage = YES;
-    if (!hasUserMessage) { self.activeThread[@"title"] = [text substringToIndex:MIN((NSUInteger)42, text.length)]; self.title = self.activeThread[@"title"]; }
+    if (!hasUserMessage) { self.activeThread[@"title"] = [text substringToIndex:MIN((NSUInteger)42, text.length)]; self.navigationItem.title = self.activeThread[@"title"]; }
     [self.rows addObject:userRow]; [self persistRows]; [self refresh];
     self.requestGeneration++;
     self.toolRounds = 0;
