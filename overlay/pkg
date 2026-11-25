@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+action="${1:-help}"
+if [ "$#" -gt 0 ]; then shift; fi
+case "$action" in
+    install|add) exec apk add "$@" ;;
+    uninstall|remove) exec apk del "$@" ;;
+    update) exec apk update "$@" ;;
+    upgrade) exec apk upgrade "$@" ;;
+    search) exec apk search "$@" ;;
+    list) exec apk info "$@" ;;
+    *) printf 'pkg install|uninstall|update|upgrade|search|list [packages]\n' ;;
+esac

@@ -1,0 +1,13 @@
+#!/bin/sh
+# Terminal32 additions by 32e4, GPL-3.0-or-later.
+set -eu
+printf '\nInstalling Python, pip, requests and terminal tools…\n'
+apk update
+apk add python3 py3-pip py3-requests bash git curl wget nano openssh-client ca-certificates
+if [ ! -x /root/.venv/bin/python ]; then
+    python3 -m venv --system-site-packages /root/.venv
+fi
+/root/.venv/bin/python -c 'import pip, requests; print("Python and requests are ready.")'
+touch /root/.terminal32-ready
+printf '\nReady. Try python, pip install <package>, git, curl, or nano.\n'
+printf 'Open a new shell or run . /root/.venv/bin/activate to use the environment.\n'

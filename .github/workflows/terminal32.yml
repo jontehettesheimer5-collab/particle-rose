@@ -1,0 +1,59 @@
+name: Build Terminal32 IPA
+on:
+  push:
+    branches: [terminal32]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+      - name: Get pinned iSH source
+        run: |
+          git clone https://github.com/ish-app/ish.git upstream
+          git -C upstream checkout ce96e698f1820b9d8db47e87c501ecb89119d7ce
+          git -C upstream submodule update --init --depth 1 deps/libapps deps/libarchive
+      - name: Install build dependencies
+        run: brew install llvm lld ninja libarchive meson
+      - name: Apply Terminal32 additions
+        run: python3 prepare.py upstream
+      - name: Build iPhone and iPad app
+        run: |
+          cd upstream
+          xcodebuild -project iSH.xcodeproj -scheme iSH -configuration Release \
+            -arch arm64 -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath ../build CODE_SIGNING_ALLOWED=NO \
+            ROOT_BUNDLE_IDENTIFIER=com.thirtytwoe4.terminal32 build > ../build.log 2>&1 || {
+              tail -n 180 ../build.log
+              exit 1
+            }
+      - name: Add package setup and package IPA
+        run: |
+          python3 prepare-root.py build/Build/Products/Release-iphoneos/iSH.app/root.tar.gz
+          mkdir -p package/Payload
+          cp -R build/Build/Products/Release-iphoneos/iSH.app package/Payload/
+          cd package
+          zip -qr ../Terminal32-unsigned.ipa Payload
+      - name: Archive corresponding source
+        run: |
+          cp README.md upstream/TERMINAL32.md
+          cp -R overlay upstream/terminal32-overlay
+          cp prepare.py prepare-root.py upstream/
+          git -C upstream diff > Terminal32-changes.patch
+          tar --exclude='.git' -czf Terminal32-source.tar.gz upstream
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Terminal32-unsigned-IPA
+          path: Terminal32-unsigned.ipa
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Terminal32-corresponding-source
+          path: |
+            Terminal32-source.tar.gz
+            Terminal32-changes.patch
+            build.log
+          if-no-files-found: error
