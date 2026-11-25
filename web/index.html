@@ -1,1 +1,21 @@
-<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>html,body{margin:0;background:black;width:100%;height:100%;overflow:hidden}video{width:100%;height:100%;object-fit:contain}#credit{position:fixed;inset:0;display:grid;place-items:center;background:black;color:white;font:24px -apple-system,sans-serif;animation:intro 2.2s forwards}@keyframes intro{0%{opacity:0}27.27%,72.73%{opacity:1}100%{opacity:0}}</style></head><body><video id="movie" playsinline preload="auto" src="intro.mp4"></video><div id="credit">made by 32e4</div><script>document.getElementById('movie').style.objectFit = window.isIPad ? 'contain' : 'cover';const credit=document.getElementById('credit');credit.addEventListener('animationend',()=>{credit.remove();document.getElementById('movie').play().catch(()=>{document.body.onclick=()=>document.getElementById('movie').play();});});</script></body></html>
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <style>
+    html, body { margin: 0; background: black; width: 100%; height: 100%; overflow: hidden; }
+    video { display: block; width: 100%; height: 100%; object-fit: contain; }
+  </style>
+</head>
+<body>
+  <video id="movie" playsinline autoplay preload="auto" src="intro.mp4"></video>
+  <script>
+    const movie = document.getElementById('movie');
+    movie.style.objectFit = window.isIPad ? 'contain' : 'cover';
+    movie.play().catch(() => {
+      document.body.addEventListener('click', () => movie.play(), { once: true });
+    });
+  </script>
+</body>
+</html>
